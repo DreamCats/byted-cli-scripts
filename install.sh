@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 默认配置
-GITHUB_REPO="DreamCats/byted-cli"
+GITHUB_REPO="DreamCats/byted-cli-scripts"
 INSTALL_DIR="$HOME/.local/bin"
 TOOLS=("logid" "lark" "ark")
 VERSION="latest"
