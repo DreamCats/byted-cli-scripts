@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 默认配置
-GITHUB_REPO="DreamCats/byted-cli-scripts"
+GITHUB_REPO="DreamCats/byted-cli"
 INSTALL_DIR="$HOME/.local/bin"
 TOOLS=("logid" "lark" "ark")
 VERSION="latest"
@@ -172,7 +172,48 @@ detect_system() {
             ;;
     esac
 
+    # 对于 Linux，检测 GLIBC 版本，决定使用 glibc 还是 musl
+    if [ "$PLATFORM" = "linux" ] && [ "$ARCH" = "x64" ]; then
+        check_glibc_version
+    fi
+
     log_debug "检测到系统: $PLATFORM-$ARCH"
+}
+
+# 检测 GLIBC 版本
+check_glibc_version() {
+    local min_glibc_version="2.29"
+    local glibc_version=""
+
+    # 尝试获取 GLIBC 版本
+    if [ -f /lib/x86_64-linux-gnu/libc.so.6 ] || [ -f /lib64/libc.so.6 ]; then
+        glibc_version=$(ldd --version 2>&1 | head -n1 | grep -oP '(\d+\.\d+)' || true)
+    fi
+
+    if [ -z "$glibc_version" ]; then
+        # 如果无法检测，尝试通过 ldd
+        if command -v ldd &> /dev/null; then
+            glibc_version=$(ldd --version 2>&1 | head -n1 | grep -oP '\d+\.\d+' || true)
+        fi
+    fi
+
+    log_debug "检测到 GLIBC 版本: $glibc_version"
+
+    # 比较版本号
+    if [ -n "$glibc_version" ]; then
+        # 使用 sort -V 进行版本比较
+        if [ "$(printf '%s\n' "$min_glibc_version" "$glibc_version" | sort -V | head -n1)" = "$min_glibc_version" ]; then
+            log_debug "GLIBC 版本满足要求 ($glibc_version >= $min_glibc_version)"
+            # 使用 glibc 版本
+            USE_MUSL=false
+        else
+            log_info "检测到 GLIBC 版本较低 ($glibc_version < $min_glibc_version)，将使用 musl 静态链接版本"
+            USE_MUSL=true
+        fi
+    else
+        log_warning "无法检测 GLIBC 版本，将使用 musl 静态链接版本以确保兼容性"
+        USE_MUSL=true
+    fi
 }
 
 # 获取最新版本
@@ -264,7 +305,13 @@ install_tool() {
     log_info "正在安装 $tool v$version..."
 
     # 构建下载 URL
-    local filename="${tool}-${version}-${PLATFORM}-${ARCH}.tar.gz"
+    local platform_suffix="${PLATFORM}-${ARCH}"
+    # 如果是 Linux x64 且需要使用 musl，则使用 musl 版本
+    if [ "$PLATFORM" = "linux" ] && [ "$ARCH" = "x64" ] && [ "$USE_MUSL" = true ]; then
+        platform_suffix="linux-musl-x64"
+    fi
+
+    local filename="${tool}-${version}-${platform_suffix}.tar.gz"
     local download_url="https://github.com/$GITHUB_REPO/releases/download/${raw_version}/$filename"
 
     # 临时目录
